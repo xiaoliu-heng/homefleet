@@ -80,6 +80,26 @@ func TestBootstrapDownloads(t *testing.T) {
 			if (err == nil) != wantSuccess || wantSuccess && !strings.Contains(string(out), "no installation or enrollment") {
 				t.Fatalf("download check: %v\n%s", err, out)
 			}
+			var expectedFailure string
+			switch scenario {
+			case "tampered-agent":
+				expectedFailure = "SHA-256 mismatch: homefleet-agent-"
+			case "tampered-installer":
+				expectedFailure = "SHA-256 mismatch: install-"
+			case "missing-hash":
+				expectedFailure = "Missing or ambiguous SHA-256 for install-"
+			case "untrusted-ca":
+				expectedFailure = "curl: (60)"
+			case "insecure-url":
+				if runtime.GOOS == "windows" {
+					expectedFailure = "must be HTTPS origins"
+				} else {
+					expectedFailure = "must also be an HTTPS origin"
+				}
+			}
+			if expectedFailure != "" && !strings.Contains(string(out), expectedFailure) {
+				t.Fatalf("expected rejection %q, got: %v\n%s", expectedFailure, err, out)
+			}
 			if strings.Contains(string(out), "must not execute") {
 				t.Fatal("check-only mode executed an installer")
 			}

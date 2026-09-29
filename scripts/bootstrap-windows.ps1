@@ -46,7 +46,16 @@ try {
     $entries = @($manifest | Where-Object { $_ -match $pattern })
     if ($entries.Count -ne 1) { throw "Missing or ambiguous SHA-256 for $file" }
     $expected = [Regex]::Match($entries[0],$pattern).Groups[1].Value
-    $actual = (Get-FileHash -LiteralPath (Join-Path $stage $file) -Algorithm SHA256).Hash
+    # Avoid module lookup: Windows PowerShell can inherit incompatible PowerShell 7 module paths.
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+      $stream = [IO.File]::OpenRead((Join-Path $stage $file))
+      $actual = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')
+    } finally {
+      if ($null -ne $stream) { $stream.Dispose() }
+      $sha256.Dispose()
+    }
     if ($actual -ne $expected) { throw "SHA-256 mismatch: $file; installation stopped." }
   }
   Write-Host "Verified installer and $binary from $DownloadUrl"

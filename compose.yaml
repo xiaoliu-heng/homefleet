@@ -1,0 +1,40 @@
+services:
+  hub:
+    build: .
+    restart: unless-stopped
+    environment:
+      HOMEFLEET_PUBLIC_URL: ${HOMEFLEET_PUBLIC_URL:-https://${HOMEFLEET_HOST:?Set HOMEFLEET_HOST to the LAN IP or DNS name}}
+      HOMEFLEET_ALLOWED_ORIGINS: ${HOMEFLEET_ALLOWED_ORIGINS:-}
+      HOMEFLEET_ADMIN_PASSWORD: ${HOMEFLEET_ADMIN_PASSWORD:?Set a 12-72 character password}
+      TZ: Asia/Shanghai
+    volumes:
+      - fleet_data:/data
+    cap_add:
+      - NET_RAW
+    networks: [fleet]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    environment:
+      HOMEFLEET_HOST: ${HOMEFLEET_HOST}
+    ports:
+      - "${HOMEFLEET_BIND_IP:-0.0.0.0}:${HOMEFLEET_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [fleet]
+    depends_on:
+      hub:
+        condition: service_healthy
+volumes:
+  fleet_data:
+  caddy_data:
+  caddy_config:
+networks:
+  fleet:

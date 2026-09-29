@@ -1,0 +1,14 @@
+# Offline deployment: build hub/web/agents on a trusted build machine first.
+# Context contains homefleet-hub, web/, releases/. Load this base image first.
+FROM caddy:2.11-alpine
+RUN addgroup -g 10001 fleet && adduser -D -u 10001 -G fleet fleet \
+ && mkdir -p /data && chown fleet:fleet /data
+WORKDIR /app
+COPY homefleet-hub /app/homefleet-hub
+COPY web /app/web
+COPY releases /app/releases
+RUN chmod 755 /app/homefleet-hub && setcap cap_net_raw=ep /app/homefleet-hub
+USER fleet
+ENV HOMEFLEET_LISTEN=0.0.0.0:8080 HOMEFLEET_DB=/data/homefleet.db HOMEFLEET_WEB=/app/web HOMEFLEET_RELEASES=/app/releases
+ENTRYPOINT ["/app/homefleet-hub"]
+CMD []

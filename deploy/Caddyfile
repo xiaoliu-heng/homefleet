@@ -1,0 +1,12 @@
+{
+	admin off
+	default_sni {$HOMEFLEET_HOST}
+	auto_https disable_redirects
+}
+https://{$HOMEFLEET_HOST} {
+	tls internal
+	encode zstd gzip
+	reverse_proxy hub:8080 {
+		flush_interval -1
+	}
+}

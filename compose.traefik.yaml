@@ -1,0 +1,20 @@
+# Add to COMPOSE_FILE after compose.yaml and any host-specific override.
+# The existing proxy owns public certificates; no Cloudflare secret goes here.
+services:
+  hub:
+    environment:
+      HOMEFLEET_PUBLIC_URL: https://${HOMEFLEET_DOMAIN:?Set HOMEFLEET_DOMAIN}
+      HOMEFLEET_CUSTOM_CA: "false"
+    networks: [fleet, home_proxy]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${HOMEFLEET_PROXY_NETWORK:?Set HOMEFLEET_PROXY_NETWORK to your existing proxy network}
+      traefik.http.routers.homefleet.rule: Host(`${HOMEFLEET_DOMAIN}`)
+      traefik.http.routers.homefleet.entrypoints: websecure
+      traefik.http.routers.homefleet.tls: "true"
+      traefik.http.routers.homefleet.service: homefleet
+      traefik.http.services.homefleet.loadbalancer.server.port: "8080"
+networks:
+  home_proxy:
+    external: true
+    name: ${HOMEFLEET_PROXY_NETWORK:?Set HOMEFLEET_PROXY_NETWORK to your existing proxy network}

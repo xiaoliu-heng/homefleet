@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useId,
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -134,24 +135,40 @@ function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleID = useId();
+  const subtitleID = useId();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     const old = document.activeElement as HTMLElement;
+    const overflow = document.body.style.overflow;
+    const background = Array.from(
+      document.querySelectorAll<HTMLElement>(".shell > aside, .shell > main"),
+    ).map((element) => ({ element, inert: element.inert }));
+    document.body.style.overflow = "hidden";
+    background.forEach(({ element }) => { element.inert = true; });
     ref.current?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeRef.current();
+      }
       if (e.key === "Tab") {
-        const els = ref.current?.querySelectorAll<HTMLElement>(
-          "button:not(:disabled), input, select, textarea, a[href]",
+        const els = Array.from(ref.current?.querySelectorAll<HTMLElement>(
+          'button, input:not([type="hidden"]), select, textarea, a[href], summary, [tabindex]',
+        ) || []).filter((element) =>
+          !element.matches(':disabled, [tabindex="-1"], [aria-disabled="true"]') &&
+          element.getClientRects().length > 0,
         );
-        if (!els?.length) return;
+        if (!els.length) { e.preventDefault(); return; }
         const first = els[0],
           last = els[els.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
+        const onContainer = document.activeElement === ref.current ||
+          !ref.current?.contains(document.activeElement);
+        if (e.shiftKey && (document.activeElement === first || onContainer)) {
           e.preventDefault();
           last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
+        } else if (!e.shiftKey && (document.activeElement === last || onContainer)) {
           e.preventDefault();
           first.focus();
         }
@@ -160,7 +177,9 @@ function Modal({
     document.addEventListener("keydown", key);
     return () => {
       document.removeEventListener("keydown", key);
-      old?.focus();
+      document.body.style.overflow = overflow;
+      background.forEach(({ element, inert }) => { element.inert = inert; });
+      if (old?.isConnected) old.focus();
     };
   }, []);
   return (
@@ -175,13 +194,14 @@ function Modal({
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleID}
+        aria-describedby={subtitle ? subtitleID : undefined}
         className={"modal " + (wide ? "wide" : "")}
       >
         <div className="modal-head">
           <div>
-            <h2>{title}</h2>
-            {subtitle && <p>{subtitle}</p>}
+            <h2 id={titleID}>{title}</h2>
+            {subtitle && <p id={subtitleID}>{subtitle}</p>}
           </div>
           <button className="icon-button" aria-label="关闭" onClick={onClose}>
             <X size={20} />
@@ -233,6 +253,7 @@ function App() {
     [projects, setProjects] = useState<Project[]>([]),
     [catalog, setCatalog] = useState<Catalog[]>([]);
   const [error, setError] = useState(""),
+    [refreshing, setRefreshing] = useState(false),
     [hubVersion, setHubVersion] = useState(""),
     [agentRelease, setAgentRelease] = useState<{release: AgentRelease | null; reason?: string}>({release:null}),
     [busy, setBusy] = useState(false),
@@ -248,6 +269,7 @@ function App() {
     (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
     [],
   );
+  useEffect(() => { window.scrollTo(0, 0); }, [tab]);
   const refresh = useCallback(async () => {
     try {
       const [ds, js, ps, release] = await Promise.all([
@@ -346,7 +368,6 @@ function App() {
         <div className="login-story">
           <Logo />
           <div>
-            <span className="eyebrow">ONE HOME. ONE CONTROL CENTER.</span>
             <h1>
               每台设备，
               <br />
@@ -388,7 +409,6 @@ function App() {
             });
           }}
         >
-          <span className="eyebrow">欢迎回来</span>
           <h2>登录你的控制台</h2>
           <p>使用初始化时设置的管理员密码。</p>
           <label>
@@ -423,11 +443,13 @@ function App() {
       <aside className="sidebar">
         <Logo />
         <span className="nav-caption">工作空间</span>
-        <nav>
+        <nav aria-label="主导航">
           {nav.map((n) => (
             <button
               key={n.id}
               aria-label={n.name}
+              aria-current={tab === n.id ? "page" : undefined}
+              title={n.name}
               className={tab === n.id ? "active" : ""}
               onClick={() => setTab(n.id)}
             >
@@ -501,7 +523,6 @@ function App() {
           )}
           <div className="page-heading">
             <div>
-              <div className="eyebrow">YOUR HOME, CONNECTED</div>
               <h1>{nav.find((n) => n.id === tab)?.name}</h1>
               <p>
                 {tab === "overview"
@@ -518,10 +539,16 @@ function App() {
             <div className="heading-actions">
               <button
                 className="button"
-                onClick={() => refresh()}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try { await refresh(); } finally { setRefreshing(false); }
+                }}
                 aria-label="刷新"
+                title="刷新"
+                aria-busy={refreshing}
+                disabled={refreshing}
               >
-                <RefreshCw size={16} />
+                <RefreshCw size={16} className={refreshing ? "spin" : ""} />
               </button>
               {tab === "overview" && (
                 <button className="button primary" onClick={() => setAdd(true)}>
@@ -590,6 +617,7 @@ function App() {
                     ].map(([v, l]) => (
                       <button
                         className={filter === v ? "active" : ""}
+                        aria-pressed={filter === v}
                         key={v}
                         onClick={() => setFilter(v)}
                       >
@@ -636,38 +664,48 @@ function App() {
                   </Empty>
                 ) : (
                   <div className="table-scroll">
-                    <table className="device-table">
+                    <table className="device-table" aria-label="设备列表">
                       <thead>
                         <tr>
                           <th>
-                            <input
-                              aria-label="选择当前列表全部主机"
-                              type="checkbox"
-                              checked={
-                                visible.filter((d) => d.kind === "agent")
-                                  .length > 0 &&
-                                visible
-                                  .filter((d) => d.kind === "agent")
-                                  .every((d) => selected.includes(d.id))
-                              }
-                              onChange={(e) =>
-                                setSelected(
-                                  e.target.checked
-                                    ? [
-                                        ...new Set([
-                                          ...selected,
-                                          ...visible
-                                            .filter((d) => d.kind === "agent")
-                                            .map((d) => d.id),
-                                        ]),
-                                      ]
-                                    : selected.filter(
-                                        (id) =>
-                                          !visible.some((d) => d.id === id),
-                                      ),
-                                )
-                              }
-                            />
+                            <label className="table-select-all">
+                              <input
+                                aria-label="选择当前列表全部主机"
+                                type="checkbox"
+                                ref={(element) => {
+                                  if (element) {
+                                    const hosts = visible.filter((d) => d.kind === "agent");
+                                    const count = hosts.filter((d) => selected.includes(d.id)).length;
+                                    element.indeterminate = count > 0 && count < hosts.length;
+                                  }
+                                }}
+                                checked={
+                                  visible.filter((d) => d.kind === "agent")
+                                    .length > 0 &&
+                                  visible
+                                    .filter((d) => d.kind === "agent")
+                                    .every((d) => selected.includes(d.id))
+                                }
+                                onChange={(e) =>
+                                  setSelected(
+                                    e.target.checked
+                                      ? [
+                                          ...new Set([
+                                            ...selected,
+                                            ...visible
+                                              .filter((d) => d.kind === "agent")
+                                              .map((d) => d.id),
+                                          ]),
+                                        ]
+                                      : selected.filter(
+                                          (id) =>
+                                            !visible.some((d) => d.id === id),
+                                        ),
+                                  )
+                                }
+                              />
+                              <span className="mobile-selection-label">全选当前主机</span>
+                            </label>
                           </th>
                           <th>设备</th>
                           <th>状态 / IP 地址</th>
@@ -692,17 +730,20 @@ function App() {
                               }
                             >
                               <td>
-                                <input
-                                  aria-label={"选择 " + d.name}
-                                  type="checkbox"
-                                  disabled={d.kind !== "agent"}
-                                  checked={selected.includes(d.id)}
-                                  onChange={() => toggle(d.id)}
-                                />
+                                <label className="device-select">
+                                  <input
+                                    aria-label={"选择 " + d.name}
+                                    type="checkbox"
+                                    disabled={d.kind !== "agent"}
+                                    checked={selected.includes(d.id)}
+                                    onChange={() => toggle(d.id)}
+                                  />
+                                </label>
                               </td>
                               <td>
                                 <button
                                   className="device-name"
+                                  title={d.name}
                                   onClick={() => setDetail(d)}
                                 >
                                   <OSIcon os={d.os} />
@@ -734,19 +775,19 @@ function App() {
                                   {primaryAddress(d)}
                                 </code>
                               </td>
-                              <td>
+                              <td data-label="CPU">
                                 <div className={d.online ? "" : "stale"}>
                                   {percent(d.latest?.cpu)}
                                   <Bar value={d.latest?.cpu} />
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="内存">
                                 <div className={d.online ? "" : "stale"}>
                                   {percent(d.latest?.memory_percent)}
                                   <Bar value={d.latest?.memory_percent} />
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="GPU">
                                 <div className={d.online ? "" : "stale"}>
                                   {percent(g?.utilization)}
                                   <small className="muted">
@@ -757,7 +798,7 @@ function App() {
                                   </small>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="磁盘可用">
                                 {disks?.length ? (
                                   <>
                                     <b className="number">
@@ -793,7 +834,11 @@ function App() {
                       <Empty
                         title="没有匹配的设备"
                         text="试试其他名称、地址或筛选条件。"
-                      />
+                      >
+                        <button className="button" onClick={() => { setSearch(""); setFilter("all"); }}>
+                          清除筛选
+                        </button>
+                      </Empty>
                     )}
                   </div>
                 )}
@@ -1043,7 +1088,7 @@ function Stat({
       </div>
       <strong>
         {value}
-        <small>台{label.includes("任务") ? " / 任务" : ""}</small>
+        <small>{label.includes("任务") ? "个" : "台"}</small>
       </strong>
       <p>{detail}</p>
     </div>
@@ -1839,7 +1884,7 @@ function JobDetail({
                   }
                 />
               )}
-              <button onClick={() => setTargetID(t.id)}>
+              <button title={t.device_name} aria-pressed={target?.id === t.id} onClick={() => setTargetID(t.id)}>
                 <strong>{t.device_name}</strong>
                 <Badge state={t.state} />
               </button>
@@ -1919,7 +1964,7 @@ function JobDetail({
           <div className="terminal-head">
             <Terminal size={15} /> 执行日志 <span>{logs.length} 条</span>
           </div>
-          <pre className="log-view">
+          <pre className="log-view" tabIndex={0} aria-label="执行日志内容">
             {logs.length ? (
               logs.map((l) => (
                 <div className={"log " + l.stream} key={l.seq}>

@@ -36,3 +36,9 @@ test-results/
 /deploy/Caddyfile.*
 /deploy/caddy.*.json
 /homefleet-ca.crt
+
+# Impeccable machine-local preferences and preview runtime
+**/.impeccable/config.local.json
+**/.impeccable/hook.cache.json
+**/.impeccable/live/*
+!**/.impeccable/live/config.json

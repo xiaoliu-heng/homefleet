@@ -327,6 +327,8 @@ test("real API batch preview submits only compatible targets and streams logs", 
   await expect(
     dialog.getByRole("button", { name: "确认执行 1 台" }),
   ).toBeEnabled();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(dialog.getByRole("button", { name: "确认执行 1 台" })).toBeInViewport({ ratio: 1 });
   const submitted = page.waitForResponse((r) => r.url().endsWith("/execute"));
   await dialog.getByRole("button", { name: "确认执行 1 台" }).click();
   const job = await (await submitted).json();
@@ -418,17 +420,56 @@ test("mobile layout keeps navigation and controls within viewport", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await overview(page);
+  await expect(page.locator('.sidebar nav button[aria-current="page"]')).toHaveText("设备总览");
+  await expect(page.locator(".sidebar nav button span").filter({ hasText: "软件管理" })).toBeVisible();
+  const deviceRows = page.locator(".device-table tbody tr");
+  await expect(deviceRows.first().locator('[data-label="CPU"]')).toBeVisible();
+  await expect(deviceRows.first().locator('[data-label="磁盘可用"]')).toBeVisible();
   const width = await page.evaluate(() => ({
     body: document.documentElement.scrollWidth,
     view: window.innerWidth,
   }));
   expect(width.body).toBeLessThanOrEqual(width.view);
+  await page.getByRole("button", { name: "查看 测试 Arch B", exact: true }).scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await page.getByRole("button", { name: "项目与应用", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "项目与应用", exact: true }),
-  ).toBeVisible();
+  ).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await page.getByRole("button", { name: "登记项目", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+});
+
+test("dialogs contain keyboard focus and return it to their trigger", async ({ page }) => {
+  await overview(page);
+  const trigger = page.getByRole("button", { name: "接入设备", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "接入设备", exact: true });
+  await expect(dialog).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "生成一次性接入令牌" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("button", { name: "关闭", exact: true })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "生成一次性接入令牌" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: /^全部设备/ })).toBeFocused();
+});
+
+test("empty search recovers the device list and selection reports mixed state", async ({ page }) => {
+  await overview(page);
+  const deviceNames = await page.locator(".device-name b").allTextContents();
+  await page.getByLabel("搜索设备").fill("no-such-device-for-ui-test");
+  await expect(page.getByRole("heading", { name: "没有匹配的设备" })).toBeVisible();
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await expect(page.getByLabel("搜索设备")).toHaveValue("");
+  await expect(page.locator(".device-name b")).toHaveText(deviceNames);
+  await page.getByRole("checkbox", { name: "选择 测试 Arch A", exact: true }).check();
+  await expect(page.getByRole("checkbox", { name: "选择当前列表全部主机" })).toHaveJSProperty("indeterminate", true);
 });
 
 test("Agent versions, pinned manual update and old-Agent migration", async ({page})=>{

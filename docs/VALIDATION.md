@@ -10,7 +10,7 @@ HomeFleet 为预览版。自动化测试与跨平台构建可以重复执行，�
 |---|---|
 | Go | Linux、macOS、Windows 的 `go test -race ./...` 和 `go vet ./...` |
 | 前端 | 锁文件安装、TypeScript 检查和 Vite 生产构建 |
-| 浏览器 | 11 项 Chromium 测试，桌面和手机布局 |
+| 浏览器 | 13 项 Chromium 测试，桌面和手机布局、弹窗键盘焦点、筛选恢复和部分选择状态 |
 | Docker | Compose 配置校验和标准 Dockerfile 构建 |
 
 Go 测试涵盖注册令牌单次使用、会话与 Agent 权限隔离、机密加密和日志脱敏、任务预览、固定执行范围、并发与单设备互斥、取消、未知结果保护、日志去重续传、备份恢复、指标解析、软件包策略、Git 改动保护及 Agent 更新恢复。
